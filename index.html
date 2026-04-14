@@ -621,10 +621,18 @@
 
         function renderFilterBars() {
             const html = buildFilterBarHTML();
-            const a = document.getElementById('filter-bar-import');
-            const b = document.getElementById('filter-bar-results');
-            if (a) a.innerHTML = html;
-            if (b) b.innerHTML = html;
+            ['filter-bar-import', 'filter-bar-results'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const focused  = el.contains(document.activeElement) && document.activeElement.tagName === 'INPUT';
+                const selStart = focused ? document.activeElement.selectionStart : null;
+                const selEnd   = focused ? document.activeElement.selectionEnd   : null;
+                el.innerHTML = html;
+                if (focused) {
+                    const input = el.querySelector('input[type="text"]');
+                    if (input) { input.focus(); input.setSelectionRange(selStart, selEnd); }
+                }
+            });
         }
 
         function buildFilterBarHTML() {
