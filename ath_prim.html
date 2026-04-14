@@ -1,0 +1,1268 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gymnasiade 2025 - V21.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <!-- Firebase SDK (compat build — no bundler needed) -->
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body           { font-family: 'Inter', sans-serif; }
+        .chrono-input  { font-family: monospace; font-weight: 900; letter-spacing: 1px; }
+        .tab-active    { border-bottom: 4px solid #f59e0b; color: #f59e0b; }
+        .sub-tab-active {
+            background-color: #fbbf24 !important;
+            color:            #1e293b !important;
+            border:           2px solid #1e293b !important;
+        }
+        .header-m { background: #eff6ff; color: #1e40af; border-left: 8px solid #1e40af; font-weight: 900; }
+        .header-f { background: #fdf2f8; color: #9d174d; border-left: 8px solid #9d174d; font-weight: 900; }
+
+        /* Filter pills */
+        .filter-pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 14px; border-radius: 999px;
+            font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
+            border: 2px solid #e2e8f0; background: #fff; color: #64748b;
+            cursor: pointer; transition: all .15s; white-space: nowrap;
+        }
+        .filter-pill:hover { border-color: #f59e0b; color: #92400e; }
+        .filter-pill.active { background: #f59e0b; border-color: #d97706; color: #1e293b; }
+        .filter-search {
+            background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 14px;
+            padding: 10px 16px; font-weight: 700; font-size: 13px; outline: none;
+            transition: border-color .15s; width: 100%;
+        }
+        .filter-search:focus { border-color: #f59e0b; }
+        .filter-select {
+            background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 14px;
+            padding: 10px 14px; font-weight: 700; font-size: 12px; outline: none;
+            cursor: pointer; transition: border-color .15s; max-width: 200px;
+        }
+        .filter-select:focus { border-color: #f59e0b; }
+        .filter-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            background: #f59e0b; color: #1e293b; border-radius: 999px;
+            min-width: 20px; height: 20px; padding: 0 6px; font-size: 10px; font-weight: 900;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <!-- ============================================================
+         FIREBASE SETUP BANNER
+         Shown when FIREBASE_CONFIG still has placeholder values.
+    ============================================================ -->
+    <div id="firebase-banner" style="display:none;"
+         class="bg-amber-400 text-slate-900 px-6 py-4 text-sm font-bold flex flex-wrap items-center gap-4 justify-center">
+        <span>⚠️ Firebase non configuré — l'app tourne en mode local (données non partagées).</span>
+        <span class="font-black uppercase text-xs bg-slate-900 text-amber-400 px-3 py-1 rounded-lg">
+            Ouvrez le fichier HTML et remplissez FIREBASE_CONFIG
+        </span>
+    </div>
+
+    <!-- ============================================================
+         NAVIGATION
+    ============================================================ -->
+    <nav class="bg-slate-900 text-white shadow-2xl sticky top-0 z-50 border-b-4 border-amber-500">
+        <div class="container mx-auto px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-amber-500 text-slate-900 p-2 rounded-lg font-black text-xl italic shadow-lg">G25</div>
+                <h1 class="text-lg font-black uppercase italic tracking-tighter">
+                    Gymnasiade <span class="text-amber-500 text-sm">v21.0</span>
+                </h1>
+            </div>
+            <div class="flex items-center gap-6">
+                <!-- Real-time connection status -->
+                <div id="connection-status" class="flex items-center gap-2 text-xs font-black uppercase text-slate-400">
+                    <span id="conn-dot" style="font-size:10px;">●</span>
+                    <span id="conn-label">Connexion...</span>
+                </div>
+                <div class="flex items-center gap-4 font-black text-[10px] md:text-xs uppercase tracking-widest">
+                    <button onclick="showSection('infos')"   class="nav-link py-2" id="nav-infos">ℹ️ Configuration</button>
+                    <button onclick="showSection('import')"  class="nav-link py-2" id="nav-import">📝 Inscriptions</button>
+                    <button onclick="showSection('results')" class="nav-link py-2" id="nav-results">⏱️ Chrono &amp; Qualifs</button>
+                    <button onclick="showSection('ranking')" class="nav-link py-2" id="nav-ranking">🏆 Podiums</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto p-4 max-w-6xl">
+
+        <!-- ============================================================
+             SECTION : CONFIGURATION
+        ============================================================ -->
+        <section id="section-infos" class="content-section">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <div class="bg-white rounded-[40px] shadow-sm border p-10">
+                    <h2 class="text-2xl font-black mb-6 uppercase text-slate-800 underline">Réglages</h2>
+                    <div class="space-y-4">
+
+                        <input type="text" id="tournoi-nom" placeholder="NOM DU TOURNOI"
+                            class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-black uppercase outline-none focus:border-amber-500 transition-all">
+
+                        <div class="p-6 bg-amber-50 rounded-3xl border border-amber-100">
+                            <h3 class="font-black text-amber-800 uppercase text-xs mb-4">Seuils de Qualification (%)</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="text-[10px] font-bold text-amber-600 block mb-1">Passage au Tour 2 (Demi-Finale)</label>
+                                    <input type="range" id="percent-t1" min="10" max="100" step="5" value="50"
+                                        oninput="this.nextElementSibling.value = this.value + '%'" class="w-full accent-amber-500">
+                                    <output class="font-black text-amber-900 block text-right">50%</output>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-bold text-amber-600 block mb-1">Passage au Tour 3 (Finale)</label>
+                                    <input type="range" id="percent-t2" min="10" max="100" step="5" value="50"
+                                        oninput="this.nextElementSibling.value = this.value + '%'" class="w-full accent-amber-500">
+                                    <output class="font-black text-amber-900 block text-right">50%</output>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <input type="text" id="tournoi-ville" placeholder="Ville"
+                                class="bg-slate-50 border-2 p-4 rounded-2xl font-bold">
+                            <div class="bg-amber-100 px-4 py-2 rounded-2xl">
+                                <label class="text-[9px] font-black text-amber-700 uppercase">Saison</label>
+                                <input type="number" id="season-year" value="2025" onchange="processAthletes()"
+                                    class="bg-transparent font-black text-xl outline-none text-slate-800 block">
+                            </div>
+                        </div>
+
+                        <button onclick="saveTournoiInfo()"
+                            class="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase hover:bg-amber-500 transition shadow-lg">
+                            Enregistrer &amp; Appliquer
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 rounded-[40px] p-10 text-white shadow-xl">
+                    <h2 class="text-2xl font-black mb-6 uppercase text-amber-500">Statistiques</h2>
+                    <div id="stats-display" class="grid grid-cols-2 gap-4"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================
+             SECTION : INSCRIPTIONS
+        ============================================================ -->
+        <section id="section-import" class="content-section hidden">
+            <div class="bg-white rounded-[40px] shadow-sm border border-slate-200 overflow-hidden">
+
+                <div class="p-8 border-b flex justify-between items-center bg-white flex-wrap gap-4">
+                    <h2 class="text-xl font-black italic uppercase">
+                        Inscriptions (<span id="count-total">0</span>)
+                    </h2>
+                    <div class="flex gap-2">
+                        <button onclick="openModal()"
+                            class="bg-blue-600 text-white px-6 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-blue-700 transition">
+                            ➕ AJOUT MANUEL
+                        </button>
+                        <button onclick="resetAll()"
+                            class="text-red-500 font-bold text-xs uppercase px-4 hover:bg-red-50 rounded-xl">
+                            RAZ Liste
+                        </button>
+                    </div>
+                </div>
+
+                <div class="p-8 grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-50 border-b text-center font-bold text-[10px] uppercase">
+                    <button onclick="downloadModel()"
+                        class="bg-white p-6 rounded-3xl border border-slate-100 hover:shadow-lg transition">
+                        📊 Modèle Excel
+                    </button>
+                    <label class="bg-white p-6 rounded-3xl border-2 border-dashed border-blue-200 hover:border-blue-500 transition cursor-pointer text-blue-600">
+                        📥 Importer Excel
+                        <input type="file" id="excel-file" class="hidden" onchange="importExcel(event)">
+                    </label>
+                    <button onclick="generateGlobalListPDF()"
+                        class="bg-white p-6 rounded-3xl border border-rose-500 hover:bg-rose-50 transition text-rose-600">
+                        📄 Liste Globale PDF
+                    </button>
+                </div>
+
+                <!-- Filter bar -->
+                <div id="filter-bar-import" class="px-8 py-5 border-b bg-white"></div>
+                <div id="filter-count-import" class="hidden px-8 py-2 bg-amber-50 border-b text-[11px] font-black text-amber-700 uppercase"></div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left" id="table-inscriptions">
+                        <thead>
+                            <tr class="bg-slate-800 text-white text-[10px] uppercase font-black tracking-widest">
+                                <th class="p-5">Groupe</th>
+                                <th class="p-5">Athlète</th>
+                                <th class="p-5">École</th>
+                                <th class="p-5">Année</th>
+                                <th class="p-5">Massar / Assurance</th>
+                                <th class="p-5 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="athletes-body" class="text-sm divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================
+             SECTION : CHRONO & QUALIFS
+        ============================================================ -->
+        <section id="section-results" class="content-section hidden">
+            <div class="bg-white rounded-[40px] shadow-sm border border-slate-200 overflow-hidden">
+
+                <div class="bg-slate-800 p-2 flex gap-2">
+                    <button onclick="changeTour(0)" id="btn-tour-1"
+                        class="sub-tab flex-1 py-4 rounded-2xl font-black uppercase text-[10px] transition bg-slate-700 text-slate-400">
+                        1️⃣ Séries
+                    </button>
+                    <button onclick="changeTour(1)" id="btn-tour-2"
+                        class="sub-tab flex-1 py-4 rounded-2xl font-black uppercase text-[10px] transition bg-slate-700 text-slate-400">
+                        2️⃣ Demi-Finales
+                    </button>
+                    <button onclick="changeTour(2)" id="btn-tour-3"
+                        class="sub-tab flex-1 py-4 rounded-2xl font-black uppercase text-[10px] transition bg-slate-700 text-slate-400">
+                        3️⃣ Finale
+                    </button>
+                </div>
+
+                <div class="p-8">
+                    <div class="flex justify-between items-center mb-6 flex-wrap gap-4">
+                        <div>
+                            <h2 id="current-tour-title" class="text-3xl font-black uppercase text-slate-800 italic">Tour 1</h2>
+                            <p id="current-tour-desc" class="text-[10px] font-bold text-slate-400 uppercase italic">Saisie des résultats</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="btn-qualif-action" onclick="runQualification()"
+                                class="bg-blue-600 text-white px-6 py-4 rounded-2xl font-black text-xs uppercase shadow-xl">
+                                Qualifier ✂️
+                            </button>
+                            <button onclick="exportChronoPDF()"
+                                class="bg-emerald-600 text-white px-6 py-4 rounded-2xl font-black text-xs uppercase shadow-xl">
+                                Rapport PDF 📊
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filter bar -->
+                    <div id="filter-bar-results" class="mb-4"></div>
+                    <div id="filter-count-results" class="hidden mb-4 px-5 py-2 bg-amber-50 rounded-2xl text-[11px] font-black text-amber-700 uppercase"></div>
+
+                    <div id="results-container" class="space-y-4"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================
+             SECTION : PODIUMS
+        ============================================================ -->
+        <section id="section-ranking" class="content-section hidden">
+            <div id="podiums-container" class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10"></div>
+            <button onclick="generatePodiumPDF()"
+                class="mt-12 bg-indigo-950 text-amber-500 p-8 rounded-[40px] w-full font-black text-2xl hover:bg-black transition uppercase border-b-8 border-amber-600 shadow-2xl italic tracking-tighter">
+                Exporter Palmarès Officiel PDF
+            </button>
+        </section>
+
+    </div><!-- /container -->
+
+    <!-- ============================================================
+         MODAL : FICHE ATHLÈTE
+    ============================================================ -->
+    <div id="modal"
+         class="fixed inset-0 bg-slate-900/90 backdrop-blur-md items-center justify-center p-4 z-[100]"
+         style="display:none;">
+        <div class="bg-white rounded-[40px] max-w-md w-full p-10 shadow-2xl">
+            <h3 class="text-2xl font-black mb-8 italic uppercase text-slate-800 tracking-tighter">Fiche Athlète</h3>
+            <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <input type="text" id="m-nom" placeholder="NOM"
+                        class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-black outline-none focus:border-amber-500 uppercase">
+                    <input type="text" id="m-prenom" placeholder="Prénom"
+                        class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold outline-none focus:border-amber-500">
+                </div>
+                <input type="text" id="m-ecole" placeholder="École"
+                    class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold outline-none">
+                <div class="grid grid-cols-2 gap-3">
+                    <input type="text" id="m-dob" placeholder="Année"
+                        class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold outline-none">
+                    <select id="m-genre"
+                        class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-black outline-none appearance-none cursor-pointer">
+                        <option value="M">GARÇON / ذكر</option>
+                        <option value="F">FILLE / أنثى</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <input type="text" id="m-massar" placeholder="Code Massar"
+                        class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold outline-none">
+                    <input type="text" id="m-assurance" placeholder="Assurance"
+                        class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold outline-none">
+                </div>
+                <div class="flex gap-3 pt-6">
+                    <button onclick="saveAthlete()"
+                        class="bg-amber-500 text-slate-900 flex-1 py-5 rounded-2xl font-black uppercase shadow-xl hover:bg-amber-600 transition-all">
+                        Enregistrer
+                    </button>
+                    <button onclick="closeModal()"
+                        class="bg-slate-100 text-slate-500 px-8 py-5 rounded-2xl font-bold">
+                        Annuler
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // FIREBASE CONFIGURATION
+        // ============================================================
+        //
+        // HOW TO SET UP (one-time, ~5 minutes):
+        //
+        //  1. Go to https://console.firebase.google.com
+        //  2. Click "Add project" → give it a name → Continue
+        //  3. In the left sidebar: Build → Realtime Database → Create database
+        //     → choose a region → Start in TEST MODE → Enable
+        //  4. In the left sidebar: Project Settings (gear icon)
+        //     → "Your apps" tab → click the </> Web icon → Register app
+        //     → copy the firebaseConfig object shown
+        //  5. Paste your values below, replacing every "PASTE_..." placeholder
+        //  6. Deploy this file to Vercel or GitHub Pages
+        //
+        // SECURITY NOTE: Test mode allows open read/write — fine for a
+        // one-day event. Before the event, set an expiry date in the
+        // Realtime Database Rules tab.
+        //
+        const FIREBASE_CONFIG = {
+            apiKey:            "AIzaSyAPNnG9ImH-mZ-FXr9O24uCHU2fkuKnOz8",
+            authDomain:        "athletisme-primaire.firebaseapp.com",
+            databaseURL:       "https://athletisme-primaire-default-rtdb.firebaseio.com",
+            projectId:         "athletisme-primaire",
+            storageBucket:     "athletisme-primaire.firebasestorage.app",
+            messagingSenderId: "578172717885",
+            appId:             "1:578172717885:web:e09329dfcd725985efd354"
+        };
+
+        // ============================================================
+        // STATE
+        // ============================================================
+
+        let athletes    = [];
+        let infoTournoi = { nom: '', ville: '', percentT1: 50, percentT2: 50 };
+        let activeTour  = 0;
+
+        // True while a user is typing inside a chrono input.
+        // Prevents the real-time listener from re-rendering and wiping the input.
+        let isEditingChrono = false;
+
+        // Filter state — shared between inscriptions and chrono sections.
+        let activeFilters = {
+            search:  '',  // name search
+            ecole:   '',  // exact school name, '' = all
+            genres:  [],  // subset of ['M','F'], [] = both
+            groupes: []   // subset of ['Groupe 1','Groupe 2','Groupe 3'], [] = all
+        };
+
+        // ============================================================
+        // FIREBASE INIT
+        // ============================================================
+
+        // Detect whether the config has been filled in
+        const FIREBASE_READY = !FIREBASE_CONFIG.apiKey.startsWith('PASTE_');
+
+        let db, REF;
+
+        if (FIREBASE_READY) {
+            firebase.initializeApp(FIREBASE_CONFIG);
+            db  = firebase.database();
+            REF = db.ref('gymnasiade-v21'); // all app data lives under this key
+        }
+
+        // ============================================================
+        // PERSISTENCE : SAVE
+        // ============================================================
+
+        /**
+         * Writes the current state to Firebase (or localStorage as fallback).
+         * athletes, infoTournoi, and activeTour are all stored together
+         * so a single listener covers every type of change.
+         */
+        function saveData() {
+            document.getElementById('count-total').innerText = athletes.length;
+
+            if (FIREBASE_READY) {
+                REF.set({ athletes, infoTournoi, activeTour })
+                   .catch(err => console.error('Firebase write error:', err));
+            } else {
+                // Fallback: localStorage when Firebase is not configured
+                localStorage.setItem('gymnasiade_v21',      JSON.stringify(athletes));
+                localStorage.setItem('gymnasiade_v21_info', JSON.stringify(infoTournoi));
+            }
+        }
+
+        // ============================================================
+        // PERSISTENCE : REAL-TIME LISTENER
+        // ============================================================
+
+        /**
+         * Fires every time the database changes — from any connected browser.
+         * This is what keeps two users in sync automatically.
+         *
+         * Registered inside window.onload so the DOM is ready for getCatInfo().
+         */
+        function startFirebaseListener() {
+            // Connection status indicator
+            db.ref('.info/connected').on('value', snap => {
+                const dot   = document.getElementById('conn-dot');
+                const label = document.getElementById('conn-label');
+                if (snap.val()) {
+                    dot.style.color   = '#4ade80'; // green
+                    label.textContent = 'En ligne';
+                } else {
+                    dot.style.color   = '#f87171'; // red
+                    label.textContent = 'Hors ligne';
+                }
+            });
+
+            // Main data listener
+            REF.on('value', snapshot => {
+                const data = snapshot.val();
+
+                if (data) {
+                    // Firebase may store arrays as objects with numeric string keys.
+                    // Normalise back to a real array.
+                    if (data.athletes) {
+                        athletes = Array.isArray(data.athletes)
+                            ? data.athletes
+                            : Object.values(data.athletes);
+                    } else {
+                        athletes = [];
+                    }
+
+                    if (data.infoTournoi)                     infoTournoi = data.infoTournoi;
+                    if (typeof data.activeTour === 'number')  activeTour  = data.activeTour;
+                }
+
+                // Recompute display-only fields (catLabel, catSort, catFull) from
+                // the current season-year input. These are derived values, not stored.
+                athletes.forEach(a => {
+                    const info = getCatInfo(a.dob);
+                    a.catLabel = info.label;
+                    a.catSort  = info.sort;
+                    a.catFull  = `${a.genre === 'M' ? '👦 MASCULIN' : '👧 FÉMININ'} - ${info.label}`;
+                    if (a.q2 === undefined) a.q2 = true;
+                    if (a.q3 === undefined) a.q3 = false;
+
+                    // Firebase drops null values from arrays (nulls are treated as
+                    // "delete this key"). Restore essais as a proper 3-element array
+                    // so that handleChrono and runQualification never see undefined.
+                    a.essais = [
+                        a.essais?.[0] !== undefined ? a.essais[0] : null,
+                        a.essais?.[1] !== undefined ? a.essais[1] : null,
+                        a.essais?.[2] !== undefined ? a.essais[2] : null
+                    ];
+
+                    // Same issue for meilleur — restore null if Firebase omitted it
+                    if (a.meilleur === undefined) a.meilleur = null;
+                });
+
+                document.getElementById('count-total').innerText = athletes.length;
+
+                // Sync config form fields, but never overwrite a field the user is
+                // currently typing in.
+                syncTournoiUI();
+
+                renderFilterBars();
+                renderInscrits();
+                renderStats();
+
+                // Skip re-rendering the chrono list if someone is mid-entry —
+                // it would wipe the input they are typing into.
+                if (!isEditingChrono) renderResults();
+            });
+        }
+
+        /**
+         * Pushes infoTournoi values into the Config form fields.
+         * Skips any field that currently has focus (user is editing it).
+         */
+        function syncTournoiUI() {
+            const active = document.activeElement;
+
+            const nomEl   = document.getElementById('tournoi-nom');
+            const villeEl = document.getElementById('tournoi-ville');
+            const s1El    = document.getElementById('percent-t1');
+            const s2El    = document.getElementById('percent-t2');
+
+            if (active !== nomEl)   nomEl.value   = infoTournoi.nom   || '';
+            if (active !== villeEl) villeEl.value = infoTournoi.ville || '';
+
+            if (active !== s1El) {
+                s1El.value = infoTournoi.percentT1 || 50;
+                s1El.nextElementSibling.value = s1El.value + '%';
+            }
+            if (active !== s2El) {
+                s2El.value = infoTournoi.percentT2 || 50;
+                s2El.nextElementSibling.value = s2El.value + '%';
+            }
+        }
+
+        // ============================================================
+        // HELPERS
+        // ============================================================
+
+        function extractYear(val) {
+            if (!val) return '';
+            if (val instanceof Date) return val.getFullYear().toString();
+            if (typeof val === 'number' && val > 10000) {
+                return new Date((val - 25568) * 86400 * 1000).getFullYear().toString();
+            }
+            const match = val.toString().match(/(19|20)\d{2}/);
+            return match ? match[0] : val.toString();
+        }
+
+        function getCatInfo(yearRaw) {
+            const season = parseInt(document.getElementById('season-year').value || 2025);
+            const y      = parseInt(extractYear(yearRaw));
+            if (isNaN(y)) return { label: 'Hors-Catégorie', sort: 99 };
+
+            const g1 = [season - 12, season - 11];
+            const g2 = [season - 10, season - 9];
+            const g3 = [season - 8,  season - 7];
+
+            if (g1.includes(y)) return { label: 'Groupe 1', sort: 1 };
+            if (g2.includes(y)) return { label: 'Groupe 2', sort: 2 };
+            if (g3.includes(y)) return { label: 'Groupe 3', sort: 3 };
+            return { label: 'Hors-Catégorie', sort: 99 };
+        }
+
+        function secToTime(s) {
+            if (s === null || s === undefined || isNaN(s)) return '-';
+            const mm = Math.floor(s / 60);
+            const ss = Math.floor(s % 60);
+            const cc = Math.round((s % 1) * 100);
+            return `${mm.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}:${cc.toString().padStart(2, '0')}`;
+        }
+
+        function getGroupYearRanges() {
+            const s = parseInt(document.getElementById('season-year').value || 2025);
+            return {
+                'Groupe 1': `${s - 12}-${s - 11}`,
+                'Groupe 2': `${s - 10}-${s - 9}`,
+                'Groupe 3': `${s - 8}-${s - 7}`
+            };
+        }
+
+        function escHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        // ============================================================
+        // FILTER ENGINE
+        // ============================================================
+
+        function applyFilters(list) {
+            return list.filter(a => {
+                if (activeFilters.search) {
+                    const q    = activeFilters.search.toLowerCase();
+                    const name = `${a.nom} ${a.prenom}`.toLowerCase();
+                    if (!name.includes(q)) return false;
+                }
+                if (activeFilters.ecole && a.ecole !== activeFilters.ecole) return false;
+                if (activeFilters.genres.length  > 0 && !activeFilters.genres.includes(a.genre))    return false;
+                if (activeFilters.groupes.length > 0 && !activeFilters.groupes.includes(a.catLabel)) return false;
+                return true;
+            });
+        }
+
+        function countActiveFilters() {
+            let n = 0;
+            if (activeFilters.search)        n++;
+            if (activeFilters.ecole)         n++;
+            if (activeFilters.genres.length)  n++;
+            if (activeFilters.groupes.length) n++;
+            return n;
+        }
+
+        function toggleArrayFilter(key, value) {
+            const idx = activeFilters[key].indexOf(value);
+            if (idx === -1) activeFilters[key].push(value);
+            else activeFilters[key].splice(idx, 1);
+            renderFilterBars();
+            renderInscrits();
+            renderResults();
+        }
+
+        function setScalarFilter(key, value) {
+            activeFilters[key] = value;
+            renderFilterBars();
+            renderInscrits();
+            renderResults();
+        }
+
+        function resetFilters() {
+            activeFilters = { search: '', ecole: '', genres: [], groupes: [] };
+            renderFilterBars();
+            renderInscrits();
+            renderResults();
+        }
+
+        // ============================================================
+        // FILTER BAR RENDERER
+        // ============================================================
+
+        function renderFilterBars() {
+            const html = buildFilterBarHTML();
+            const a = document.getElementById('filter-bar-import');
+            const b = document.getElementById('filter-bar-results');
+            if (a) a.innerHTML = html;
+            if (b) b.innerHTML = html;
+        }
+
+        function buildFilterBarHTML() {
+            const yearRanges  = getGroupYearRanges();
+            const activeCount = countActiveFilters();
+
+            const schools = [...new Set(athletes.map(a => a.ecole).filter(Boolean))].sort();
+            const schoolOptions = schools.map(s =>
+                `<option value="${escHtml(s)}" ${activeFilters.ecole === s ? 'selected' : ''}>${escHtml(s)}</option>`
+            ).join('');
+
+            const gA  = g => activeFilters.genres.includes(g)   ? 'active' : '';
+            const grA = g => activeFilters.groupes.includes(g)  ? 'active' : '';
+
+            const clearBtn = activeCount > 0
+                ? `<button onclick="resetFilters()" class="filter-pill" style="border-color:#fca5a5;color:#ef4444;background:#fff1f2;">
+                       ✕ Effacer <span class="filter-badge">${activeCount}</span>
+                   </button>`
+                : '';
+
+            return `
+                <div class="flex flex-wrap items-center gap-3 mb-3">
+                    <div class="relative flex-1 min-w-[180px]">
+                        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;color:#94a3b8;">🔍</span>
+                        <input type="text" class="filter-search" style="padding-left:34px;"
+                               placeholder="Rechercher un athlète..."
+                               value="${escHtml(activeFilters.search)}"
+                               oninput="setScalarFilter('search', this.value)">
+                    </div>
+                    <select class="filter-select" onchange="setScalarFilter('ecole', this.value)">
+                        <option value="">🏫 Toutes les écoles</option>
+                        ${schoolOptions}
+                    </select>
+                    ${clearBtn}
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <span style="font-size:10px;font-weight:900;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-right:4px;">Genre :</span>
+                    <button class="filter-pill ${gA('M')}" onclick="toggleArrayFilter('genres','M')">👦 Garçons</button>
+                    <button class="filter-pill ${gA('F')}" onclick="toggleArrayFilter('genres','F')">👧 Filles</button>
+                    <span style="font-size:10px;font-weight:900;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-left:8px;margin-right:4px;">Année :</span>
+                    <button class="filter-pill ${grA('Groupe 1')}" onclick="toggleArrayFilter('groupes','Groupe 1')">${yearRanges['Groupe 1']}</button>
+                    <button class="filter-pill ${grA('Groupe 2')}" onclick="toggleArrayFilter('groupes','Groupe 2')">${yearRanges['Groupe 2']}</button>
+                    <button class="filter-pill ${grA('Groupe 3')}" onclick="toggleArrayFilter('groupes','Groupe 3')">${yearRanges['Groupe 3']}</button>
+                </div>`;
+        }
+
+        // ============================================================
+        // CORE DATA PROCESSING
+        // ============================================================
+
+        /**
+         * Re-assigns categories, sorts, saves, and renders immediately.
+         * (The Firebase listener will also fire shortly after saveData()
+         *  and render again — that second pass is idempotent.)
+         */
+        function processAthletes() {
+            athletes.forEach(a => {
+                const info = getCatInfo(a.dob);
+                a.catLabel = info.label;
+                a.catSort  = info.sort;
+                a.catFull  = `${a.genre === 'M' ? '👦 MASCULIN' : '👧 FÉMININ'} - ${info.label}`;
+                if (a.q2 === undefined) a.q2 = true;
+                if (a.q3 === undefined) a.q3 = false;
+            });
+
+            athletes.sort((a, b) => {
+                if (a.genre   !== b.genre)  return a.genre === 'M' ? -1 : 1;
+                if (a.catSort !== b.catSort) return a.catSort - b.catSort;
+                return a.nom.localeCompare(b.nom);
+            });
+
+            saveData();
+            renderFilterBars();
+            renderInscrits();
+            renderStats();
+            renderResults();
+        }
+
+        // ============================================================
+        // QUALIFICATION ENGINE
+        // ============================================================
+
+        function runQualification() {
+            if (activeTour >= 2) return;
+
+            const pct = activeTour === 0 ? infoTournoi.percentT1 : infoTournoi.percentT2;
+            if (!confirm(`Qualifier les ${pct}% meilleurs ?`)) return;
+
+            const categories = [
+                'M-Groupe 1', 'F-Groupe 1',
+                'M-Groupe 2', 'F-Groupe 2',
+                'M-Groupe 3', 'F-Groupe 3'
+            ];
+
+            categories.forEach(catKey => {
+                const [genre, catLabel] = catKey.split('-');
+                const pool = athletes.filter(a => a.genre === genre && a.catLabel === catLabel);
+
+                if (activeTour === 0) {
+                    const ranked = pool.filter(a => a.essais[0] != null).sort((a, b) => a.essais[0] - b.essais[0]);
+                    const limit  = Math.ceil(ranked.length * (infoTournoi.percentT1 / 100));
+                    pool.forEach(a => { a.q2 = false; });
+                    ranked.forEach((a, idx) => { if (idx < limit) a.q2 = true; });
+                } else {
+                    const ranked = pool.filter(a => a.q2 && a.essais[1] != null).sort((a, b) => a.essais[1] - b.essais[1]);
+                    const limit  = Math.ceil(ranked.length * (infoTournoi.percentT2 / 100));
+                    pool.forEach(a => { a.q3 = false; });
+                    ranked.forEach((a, idx) => { if (idx < limit) a.q3 = true; });
+                }
+            });
+
+            activeTour++;
+            processAthletes();
+        }
+
+        // ============================================================
+        // RENDER: INSCRIPTIONS TABLE
+        // ============================================================
+
+        function renderInscrits() {
+            const body = document.getElementById('athletes-body');
+            if (!body) return;
+
+            const filtered    = applyFilters(athletes);
+            const isFiltering = countActiveFilters() > 0;
+
+            const countEl = document.getElementById('filter-count-import');
+            if (isFiltering) {
+                countEl.classList.remove('hidden');
+                countEl.textContent = `${filtered.length} athlète${filtered.length !== 1 ? 's' : ''} correspondent aux filtres`;
+            } else {
+                countEl.classList.add('hidden');
+            }
+
+            body.innerHTML = '';
+            let currentGroup = '';
+
+            filtered.forEach(a => {
+                const realIdx = athletes.indexOf(a);
+
+                if (a.catFull !== currentGroup) {
+                    currentGroup = a.catFull;
+                    const cls = a.genre === 'M' ? 'header-m' : 'header-f';
+                    body.innerHTML += `
+                        <tr class="${cls}">
+                            <td colspan="6" class="p-4 text-[10px] uppercase font-black italic tracking-widest">${currentGroup}</td>
+                        </tr>`;
+                }
+
+                body.innerHTML += `
+                    <tr class="border-b border-slate-100 text-sm">
+                        <td class="p-5 font-bold text-slate-400 text-[10px] uppercase">${a.catLabel}</td>
+                        <td class="p-5 font-black uppercase text-slate-800">${a.nom} ${a.prenom}</td>
+                        <td class="p-5 italic text-slate-500 font-bold uppercase text-xs">${a.ecole}</td>
+                        <td class="p-5 font-mono text-center underline decoration-amber-500 font-black">${a.dob}</td>
+                        <td class="p-5 text-[10px] font-bold text-slate-400 uppercase">${a.massar} / ${a.assurance}</td>
+                        <td class="p-5 text-center">
+                            <button onclick="deleteAthlete(${realIdx})" class="text-red-300 font-black text-lg">×</button>
+                        </td>
+                    </tr>`;
+            });
+
+            if (filtered.length === 0) {
+                body.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="text-center p-16 text-slate-400 font-black uppercase italic text-sm">
+                            ${isFiltering ? '🔍 Aucun athlète ne correspond aux filtres.' : '⚠️ Aucun athlète inscrit.'}
+                        </td>
+                    </tr>`;
+            }
+        }
+
+        // ============================================================
+        // RENDER: CHRONO RESULTS
+        // ============================================================
+
+        function renderResults() {
+            const container = document.getElementById('results-container');
+            if (!container) return;
+
+            container.innerHTML = '';
+
+            document.querySelectorAll('.sub-tab').forEach((btn, i) => {
+                if (i === activeTour) btn.classList.add('sub-tab-active');
+                else btn.classList.remove('sub-tab-active');
+            });
+
+            const titles = ['Tour 1 : Séries', 'Tour 2 : Demi-Finales', 'Tour 3 : Grande Finale'];
+            document.getElementById('current-tour-title').innerText = titles[activeTour];
+            document.getElementById('btn-qualif-action').style.display = activeTour < 2 ? 'block' : 'none';
+
+            let roundList = athletes;
+            if (activeTour === 1) roundList = athletes.filter(a => a.q2);
+            if (activeTour === 2) roundList = athletes.filter(a => a.q3);
+
+            const filtered    = applyFilters(roundList);
+            const isFiltering = countActiveFilters() > 0;
+
+            const countEl = document.getElementById('filter-count-results');
+            if (isFiltering) {
+                countEl.classList.remove('hidden');
+                countEl.textContent = `${filtered.length} athlète${filtered.length !== 1 ? 's' : ''} correspondent aux filtres`;
+            } else {
+                countEl.classList.add('hidden');
+            }
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center p-20 bg-slate-100 rounded-[40px] border-2 border-dashed border-slate-300 text-slate-400 font-black uppercase italic">
+                        ${isFiltering ? '🔍 Aucun athlète ne correspond aux filtres.' : '⚠️ Aucun athlète qualifié.'}
+                    </div>`;
+                return;
+            }
+
+            let currentGroup = '';
+            filtered.forEach(a => {
+                if (a.catFull !== currentGroup) {
+                    currentGroup = a.catFull;
+                    const bgClass = a.genre === 'M' ? 'bg-indigo-600' : 'bg-rose-600';
+                    const count   = filtered.filter(x => x.catFull === currentGroup).length;
+                    container.innerHTML += `
+                        <div class="${bgClass} text-white p-3 rounded-2xl text-[10px] font-black uppercase mt-10 mb-2 pl-8 italic shadow-md">
+                            GROUPE : ${currentGroup} (${count} Qualifiés)
+                        </div>`;
+                }
+
+                const globalIdx = athletes.indexOf(a);
+                const chronoRaw = a.essais[activeTour]
+                    ? secToTime(a.essais[activeTour]).replace(/:/g, '')
+                    : '';
+
+                container.innerHTML += `
+                    <div class="flex flex-wrap items-center gap-4 p-6 bg-white rounded-[32px] border border-slate-100 shadow-sm hover:shadow-xl transition-all">
+                        <div class="w-64">
+                            <p class="font-black text-slate-900 uppercase text-lg leading-none">${a.nom} ${a.prenom}</p>
+                            <p class="text-[9px] font-bold text-slate-400 mt-1 uppercase italic">${a.ecole}</p>
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="text-[9px] font-black text-slate-300 uppercase mb-1 underline decoration-amber-500 italic">
+                                Chrono T${activeTour + 1}
+                            </label>
+                            <input type="text" maxlength="6" placeholder="000000"
+                                class="chrono-input bg-slate-50 border-2 border-transparent rounded-2xl p-4 w-36 text-center text-lg focus:border-amber-500 outline-none shadow-inner"
+                                value="${chronoRaw}"
+                                onfocus="isEditingChrono = true"
+                                onblur="handleChrono(${globalIdx}, ${activeTour}, this)">
+                        </div>
+                        <div class="ml-auto text-right pr-6 border-l-2 pl-8 border-slate-50">
+                            <p class="text-[9px] font-black text-amber-500 uppercase italic">Meilleur Absolu</p>
+                            <p class="text-3xl font-black text-slate-900 chrono-input tracking-tighter">${secToTime(a.meilleur)}</p>
+                        </div>
+                    </div>`;
+            });
+        }
+
+        // ============================================================
+        // RENDER: STATISTICS
+        // ============================================================
+
+        function renderStats() {
+            const total = athletes.length;
+            const boys  = athletes.filter(a => a.genre === 'M').length;
+            const girls = athletes.filter(a => a.genre === 'F').length;
+
+            document.getElementById('stats-display').innerHTML = `
+                <div class="bg-slate-800 p-6 rounded-3xl">
+                    <p class="text-slate-400 font-black uppercase text-[9px]">Athlètes</p>
+                    <h3 class="text-4xl text-amber-500 font-black">${total}</h3>
+                </div>
+                <div class="bg-slate-800 p-6 rounded-3xl border-l-4 border-blue-500">
+                    <p class="text-blue-400 font-black uppercase text-[9px]">Garçons</p>
+                    <h3 class="text-4xl font-black text-white">${boys}</h3>
+                </div>
+                <div class="bg-slate-800 p-6 rounded-3xl border-l-4 border-pink-500">
+                    <p class="text-pink-400 font-black uppercase text-[9px]">Filles</p>
+                    <h3 class="text-4xl font-black text-white">${girls}</h3>
+                </div>`;
+        }
+
+        // ============================================================
+        // RENDER: PODIUMS (VISUAL)
+        // ============================================================
+
+        function calculatePodiumsVisual() {
+            const container = document.getElementById('podiums-container');
+            container.innerHTML = '';
+
+            const cats = [
+                'M-Groupe 1', 'F-Groupe 1',
+                'M-Groupe 2', 'F-Groupe 2',
+                'M-Groupe 3', 'F-Groupe 3'
+            ];
+
+            cats.forEach(key => {
+                const [genre, catLabel] = key.split('-');
+                const top = athletes
+                    .filter(a => a.genre === genre && a.catLabel === catLabel && a.meilleur)
+                    .sort((a, b) => a.meilleur - b.meilleur)
+                    .slice(0, 5);
+
+                if (top.length === 0) return;
+
+                const borderColor = genre === 'M' ? 'border-blue-600' : 'border-rose-600';
+                const label       = genre === 'M' ? '👦 Garçons' : '👧 Filles';
+
+                let rows = '';
+                top.forEach((a, i) => {
+                    rows += `
+                        <tr class="border-b border-slate-50">
+                            <td class="py-3 font-bold text-amber-500 italic text-xl">#${i + 1}</td>
+                            <td class="py-3 font-black text-slate-700 uppercase text-xs italic underline">
+                                ${a.nom} ${a.prenom}
+                                <br><small class="font-normal text-slate-400 uppercase">${a.ecole}</small>
+                            </td>
+                            <td class="py-3 text-right font-black text-slate-900 text-lg">${secToTime(a.meilleur)}</td>
+                        </tr>`;
+                });
+
+                container.innerHTML += `
+                    <div class="bg-white p-8 rounded-[40px] shadow-lg border-t-8 ${borderColor} mb-4 transition transform hover:scale-[1.02]">
+                        <h3 class="font-black uppercase italic mb-4 text-slate-800">${label} - ${catLabel}</h3>
+                        <table class="w-full"><tbody>${rows}</tbody></table>
+                    </div>`;
+            });
+        }
+
+        // ============================================================
+        // CHRONO INPUT HANDLER
+        // ============================================================
+
+        function handleChrono(athleteIdx, tour, input) {
+            // Mark editing as done BEFORE saving so the incoming Firebase
+            // listener is allowed to re-render after this write.
+            isEditingChrono = false;
+
+            const raw = input.value.replace(/\D/g, '');
+            if (raw.length === 0) return;
+
+            const padded = raw.padStart(6, '0');
+            input.value  = `${padded.substring(0, 2)}:${padded.substring(2, 4)}:${padded.substring(4, 6)}`;
+
+            const seconds =
+                (parseInt(padded.substring(0, 2)) * 60) +
+                 parseInt(padded.substring(2, 4)) +
+                (parseInt(padded.substring(4, 6)) / 100);
+
+            athletes[athleteIdx].essais[tour] = seconds;
+            athletes[athleteIdx].meilleur     = Math.min(
+                ...athletes[athleteIdx].essais.filter(x => x != null)
+            );
+
+            saveData();
+            renderResults();
+        }
+
+        // ============================================================
+        // NAVIGATION
+        // ============================================================
+
+        function showSection(id) {
+            document.querySelectorAll('.content-section').forEach(s => s.classList.add('hidden'));
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('tab-active'));
+            document.getElementById('section-' + id).classList.remove('hidden');
+            document.getElementById('nav-'     + id).classList.add('tab-active');
+            if (id === 'results') renderResults();
+            if (id === 'ranking') calculatePodiumsVisual();
+            if (id === 'infos')   renderStats();
+        }
+
+        function changeTour(t) {
+            activeTour = t;
+            // Sync activeTour to Firebase so the other user's view updates too
+            if (FIREBASE_READY) {
+                REF.child('activeTour').set(t)
+                   .catch(err => console.error('Firebase write error:', err));
+            }
+            renderResults();
+        }
+
+        // ============================================================
+        // MODAL : ADD ATHLETE
+        // ============================================================
+
+        function openModal() {
+            ['m-nom', 'm-prenom', 'm-ecole', 'm-dob', 'm-massar', 'm-assurance'].forEach(id => {
+                document.getElementById(id).value = '';
+            });
+            document.getElementById('m-genre').value = 'M';
+            document.getElementById('modal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        function saveAthlete() {
+            const nom = document.getElementById('m-nom').value.trim();
+            if (!nom) { alert('Le nom est obligatoire.'); return; }
+
+            athletes.push({
+                nom:       nom.toUpperCase(),
+                prenom:    document.getElementById('m-prenom').value.trim(),
+                ecole:     document.getElementById('m-ecole').value.trim() || 'Non spécifié',
+                dob:       extractYear(document.getElementById('m-dob').value),
+                genre:     document.getElementById('m-genre').value,
+                massar:    document.getElementById('m-massar').value.trim(),
+                assurance: document.getElementById('m-assurance').value.trim(),
+                essais:    [null, null, null],
+                meilleur:  null,
+                q2: true,
+                q3: false
+            });
+
+            processAthletes();
+            closeModal();
+        }
+
+        // ============================================================
+        // ATHLETE MANAGEMENT
+        // ============================================================
+
+        function deleteAthlete(idx) {
+            if (confirm('Supprimer cet athlète ?')) {
+                athletes.splice(idx, 1);
+                processAthletes();
+            }
+        }
+
+        function resetAll() {
+            if (confirm('Supprimer TOUTE la liste des athlètes ?')) {
+                athletes   = [];
+                activeTour = 0;
+                saveData();
+                processAthletes();
+            }
+        }
+
+        // ============================================================
+        // TOURNAMENT SETTINGS
+        // ============================================================
+
+        function saveTournoiInfo() {
+            infoTournoi = {
+                nom:       document.getElementById('tournoi-nom').value.trim(),
+                ville:     document.getElementById('tournoi-ville').value.trim(),
+                percentT1: parseInt(document.getElementById('percent-t1').value),
+                percentT2: parseInt(document.getElementById('percent-t2').value)
+            };
+            saveData();   // writes infoTournoi to Firebase, syncs to other user
+            alert('Paramètres enregistrés !');
+        }
+
+        // ============================================================
+        // EXCEL MODEL DOWNLOAD
+        // ============================================================
+
+        function downloadModel() {
+            const headers = [['Nom', 'Prénom', 'Etablissement', 'Genre', 'Date de Naissance', 'Code Massar', 'Num Assurance']];
+            const ws = XLSX.utils.aoa_to_sheet(headers);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Modèle');
+            XLSX.writeFile(wb, 'Modele_Gymnasiade.xlsx');
+        }
+
+        // ============================================================
+        // EXCEL IMPORT
+        // ============================================================
+
+        function importExcel(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const data     = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellNF: false, cellText: false });
+                    const sheet    = workbook.Sheets[workbook.SheetNames[0]];
+                    const rows     = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+                    if (rows.length < 2) { alert('Le fichier est vide.'); return; }
+
+                    const newBatch = [];
+                    for (let i = 1; i < rows.length; i++) {
+                        const r = rows[i];
+                        if (!r[0] || r[0].toString().trim() === '') continue;
+
+                        const rawGenre = r[3] ? r[3].toString().toUpperCase() : 'M';
+                        const genre    = (rawGenre.includes('F') || rawGenre.includes('أنثى') || rawGenre.includes('FILLE')) ? 'F' : 'M';
+
+                        newBatch.push({
+                            nom:       r[0].toString().toUpperCase().trim(),
+                            prenom:    r[1] ? r[1].toString().trim() : '',
+                            ecole:     r[2] ? r[2].toString().trim() : 'Non spécifié',
+                            genre,
+                            dob:       extractYear(r[4]),
+                            massar:    r[5] ? r[5].toString().trim() : '',
+                            assurance: r[6] ? r[6].toString().trim() : '',
+                            essais:    [null, null, null],
+                            meilleur:  null,
+                            q2: true, q3: false
+                        });
+                    }
+
+                    athletes = [...athletes, ...newBatch];
+                    processAthletes();
+                    alert(newBatch.length + ' élèves importés avec succès !');
+                    e.target.value = '';
+                } catch (err) {
+                    console.error(err);
+                    alert("Erreur d'importation. Utilisez le modèle Excel.");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // ============================================================
+        // PDF EXPORTS
+        // ============================================================
+
+        function generateGlobalListPDF() {
+            let rows = '';
+            athletes.forEach(a => {
+                rows += `<tr>
+                    <td style="border:1px solid #000;padding:4px;">${a.genre}</td>
+                    <td style="border:1px solid #000;padding:4px;">${a.catLabel}</td>
+                    <td style="border:1px solid #000;padding:4px;text-transform:uppercase;font-weight:bold;">${a.nom} ${a.prenom}</td>
+                    <td style="border:1px solid #000;padding:4px;text-transform:uppercase;">${a.ecole}</td>
+                    <td style="border:1px solid #000;padding:4px;">${a.dob}</td>
+                </tr>`;
+            });
+            const html = `<div style="padding:20px;">
+                <h2 style="text-align:center;font-weight:bold;">${infoTournoi.nom} - LISTE GLOBALE</h2>
+                <table style="width:100%;border-collapse:collapse;border:1px solid #000;">
+                    <thead><tr style="background:#eee;">
+                        <th style="border:1px solid #000;padding:4px;">Sexe</th>
+                        <th style="border:1px solid #000;padding:4px;">Groupe</th>
+                        <th style="border:1px solid #000;padding:4px;">Athlète</th>
+                        <th style="border:1px solid #000;padding:4px;">École</th>
+                        <th style="border:1px solid #000;padding:4px;">Année</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table></div>`;
+            html2pdf().set({ margin: 5, filename: 'Liste_Globale.pdf' }).from(html).save();
+        }
+
+        function exportChronoPDF() {
+            let list;
+            if      (activeTour === 0) list = athletes;
+            else if (activeTour === 1) list = athletes.filter(a => a.q2);
+            else                       list = athletes.filter(a => a.q3);
+
+            let rows = '';
+            list.forEach(a => {
+                rows += `<tr>
+                    <td style="border:1px solid #000;padding:4px;"><b>${a.nom} ${a.prenom}</b></td>
+                    <td style="border:1px solid #000;padding:4px;">${a.ecole}</td>
+                    <td style="border:1px solid #000;padding:4px;color:red;font-weight:bold;">${secToTime(a.essais[activeTour])}</td>
+                </tr>`;
+            });
+            const html = `<div style="padding:20px;">
+                <h2 style="text-align:center;">Chronos T${activeTour + 1}</h2>
+                <table style="width:100%;border-collapse:collapse;border:1px solid #000;">
+                    <thead><tr style="background:#eee;">
+                        <th style="border:1px solid #000;padding:4px;">Athlète</th>
+                        <th style="border:1px solid #000;padding:4px;">École</th>
+                        <th style="border:1px solid #000;padding:4px;">Chrono</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table></div>`;
+            html2pdf().set({ margin: 5, filename: 'Chronos.pdf' }).from(html).save();
+        }
+
+        function generatePodiumPDF() {
+            const groups = [
+                { g: 'M', l: 'Groupe 1' }, { g: 'F', l: 'Groupe 1' },
+                { g: 'M', l: 'Groupe 2' }, { g: 'F', l: 'Groupe 2' },
+                { g: 'M', l: 'Groupe 3' }, { g: 'F', l: 'Groupe 3' }
+            ];
+            let pages = '';
+            groups.forEach((group, idx) => {
+                const top = athletes
+                    .filter(a => a.genre === group.g && a.catLabel === group.l && a.meilleur)
+                    .sort((a, b) => a.meilleur - b.meilleur).slice(0, 10);
+                let rows = '';
+                top.forEach((a, i) => {
+                    rows += `<tr>
+                        <td style="border:1px solid #000;padding:4px;">#${i + 1}</td>
+                        <td style="border:1px solid #000;padding:4px;font-weight:bold;">${a.nom} ${a.prenom}</td>
+                        <td style="border:1px solid #000;padding:4px;">${a.ecole}</td>
+                        <td style="border:1px solid #000;padding:4px;text-align:right;font-weight:bold;">${secToTime(a.meilleur)}</td>
+                    </tr>`;
+                });
+                pages += `<div style="${idx > 0 ? 'page-break-before:always;' : ''}padding:40px;">
+                    <h1 style="text-align:center;">PALMARÈS FINAL</h1>
+                    <h3 style="background:#000;color:#fff;padding:10px;text-align:center;">${group.g === 'M' ? 'Garçons' : 'Filles'} - ${group.l}</h3>
+                    <table style="width:100%;border-collapse:collapse;border:1px solid #000;">
+                        <thead><tr style="background:#eee;">
+                            <th style="border:1px solid #000;padding:4px;">Rang</th>
+                            <th style="border:1px solid #000;padding:4px;">Nom</th>
+                            <th style="border:1px solid #000;padding:4px;">École</th>
+                            <th style="border:1px solid #000;padding:4px;text-align:right;">Chrono</th>
+                        </tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table></div>`;
+            });
+            html2pdf().set({ margin: 0, filename: 'Palmares.pdf' }).from(pages).save();
+        }
+
+        // ============================================================
+        // INIT
+        // ============================================================
+
+        window.onload = () => {
+            if (FIREBASE_READY) {
+                // Firebase is configured: start the real-time listener.
+                // It fires immediately with the current DB state, populating
+                // athletes + infoTournoi and triggering the first render.
+                startFirebaseListener();
+            } else {
+                // Firebase not configured: show the banner and fall back to
+                // localStorage so the app still works for a single user.
+                document.getElementById('firebase-banner').style.display = 'flex';
+
+                // Hide connection status (irrelevant without Firebase)
+                document.getElementById('connection-status').style.display = 'none';
+
+                athletes    = JSON.parse(localStorage.getItem('gymnasiade_v21'))      || [];
+                infoTournoi = JSON.parse(localStorage.getItem('gymnasiade_v21_info')) || {
+                    nom: '', ville: '', percentT1: 50, percentT2: 50
+                };
+
+                syncTournoiUI();
+                processAthletes();
+            }
+
+            showSection('infos');
+        };
+    </script>
+</body>
+</html>
